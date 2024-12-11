@@ -1,0 +1,11 @@
+name: k8s_project
+description: A Python program to deploy a web application onto a Kubernetes cluster
+runtime:
+  name: python
+  options:
+    toolchain: pip
+    virtualenv: venv
+config:
+  pulumi:tags:
+    value:
+      pulumi:template: webapp-kubernetes-python

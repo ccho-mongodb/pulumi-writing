@@ -1,0 +1,4 @@
+config:
+  k8s_project:namespace: default
+  k8s_project:replicas: "1"
+  aws:region: us-east-1
