@@ -1,0 +1,5 @@
+pulumi
+pulumi-aws
+flask
+boto3
+botocore
