@@ -32,7 +32,7 @@ def ensure_aws_credentials():
         raise ValueError(
             "AWS credentials missing. Please set the AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY environment variables."
         )
-    
+
 ensure_plugins()
 ensure_aws_credentials()
 
@@ -45,7 +45,7 @@ def upload_starter_content(site_bucket: s3.BucketV2, name: str) -> s3.BucketWebs
     content = """<!DOCTYPE html>
         <html>
         <head>
-            <title>My Geostacks Website</title>
+            <title>My GeoStacks Website</title>
             <style>
                 body {{
                     font-family: Arial, sans-serif;
@@ -65,7 +65,7 @@ def upload_starter_content(site_bucket: s3.BucketV2, name: str) -> s3.BucketWebs
         </body>
         </html>
         """.format(timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S"), name=name)
-    
+
     # Configure the website settings for the bucket
     website_configuration = s3.BucketWebsiteConfigurationV2("bucketConfig",
         bucket=site_bucket.id,

@@ -13,7 +13,7 @@ manually on Amazon S3.
 "Our DevOps team developed a fear of text message notifications and couldn't stand 
 another hour on the Amazon AWS console. And our users couldn't wait another moment to
 establish their online presence. We needed to application-level automation right away," 
-Eureka Petsburgh, Geostacks' CTO remarked. While exploring solutions, Eureka discovered
+Eureka Petsburgh, GeoStacks' CTO remarked. While exploring solutions, Eureka discovered
 that the Pulumi Automation API enabled engineers to automate infrastructure management
 in code.
 
