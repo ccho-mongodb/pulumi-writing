@@ -37,9 +37,11 @@ ensure_plugins()
 ensure_aws_credentials()
 
 app = Flask(__name__)
-PROJECT_NAME = "Geostacks" # Fictional website builder/host
+PROJECT_NAME = "GeoStacks" # Fictional website builder/host
 
-def upload_starter_content(site_bucket, name):
+# Helper that uploads starter assets for the static website
+def upload_starter_content(site_bucket: s3.BucketV2, name: str) -> s3.BucketWebsiteConfigurationV2:
+    # HTML content for index.html
     content = """<!DOCTYPE html>
         <html>
         <head>
@@ -47,9 +49,6 @@ def upload_starter_content(site_bucket, name):
             <style>
                 body {{
                     font-family: Arial, sans-serif;
-                    max-width: 600px;
-                    margin: 0 auto;
-                    padding: 2rem;
                     text-align: center;
                     color: #0000ff;
                     background-color: #c0c0c0;
@@ -67,18 +66,9 @@ def upload_starter_content(site_bucket, name):
         </html>
         """.format(timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S"), name=name)
     
-    bucket_versioning = s3.BucketVersioningV2(
-        "exampleBucketVersioning",
-        bucket=site_bucket.id,
-        versioning_configuration={
-            "status": "Enabled",
-        }
-    )
-
     # Configure the website settings for the bucket
     website_configuration = s3.BucketWebsiteConfigurationV2("bucketConfig",
         bucket=site_bucket.id,
-        opts=pulumi.ResourceOptions(depends_on=[bucket_versioning]),
         index_document=s3.BucketWebsiteConfigurationV2IndexDocumentArgs(
             suffix="index.html"
         ),
@@ -87,25 +77,7 @@ def upload_starter_content(site_bucket, name):
         )
     )
 
-    # Define the bucket policy to make the objects publicly accessible
-    bucket_policy = s3.BucketPolicy("bucketPolicy",
-        bucket=website_configuration.id,
-        policy=website_configuration.id.apply(lambda id: f"""
-            {{
-                "Version": "2012-10-17",
-                "Statement": [
-                    {{
-                        "Effect": "Allow",
-                        "Principal": "*",
-                        "Action": "s3:GetObject",
-                        "Resource": "arn:aws:s3:::{id}/*"
-                    }}
-                ]
-            }}
-            """)
-    )
-
-    # Write our index.html into the site bucket
+    # Upload index.html to the site bucket
     s3.BucketObject("index",
                     bucket=site_bucket.id,
                     content=content,
@@ -119,15 +91,9 @@ def upload_starter_content(site_bucket, name):
                     key='under-construction.gif',
     )
 
+    return website_configuration
 
-# This function defines our pulumi s3 static website in terms of the content that the caller passes in.
-# This allows us to dynamically deploy websites based on user defined values from the POST body.
-def create_pulumi_program(name: str):
-    # Create a bucket and expose a website index document
-    site_bucket = s3.Bucket("s3-website-bucket", website=s3.BucketWebsiteArgs(index_document="index.html"))
-
-    upload_starter_content(site_bucket, name)
-
+def set_bucket_access(site_bucket: s3.BucketV2):
     # Configure the public access block settings to allow public policies
     bucket_public_access_block = s3.BucketPublicAccessBlock(
         "exampleBucketPublicAccessBlock",
@@ -138,8 +104,8 @@ def create_pulumi_program(name: str):
         restrict_public_buckets=False,
         opts=pulumi.ResourceOptions(depends_on=[site_bucket])
     )
-    
-    # Set the access policy for the bucket so all objects are readable
+
+    # Set read access policy for the bucket
     s3.BucketPolicy("bucket-policy",
                     bucket=site_bucket.id,
                     policy={
@@ -148,15 +114,22 @@ def create_pulumi_program(name: str):
                             "Effect": "Allow",
                             "Principal": "*",
                             "Action": ["s3:GetObject"],
-                            # Policy refers to bucket explicitly
                             "Resource": [pulumi.Output.concat("arn:aws:s3:::", site_bucket.id, "/*")]
                         },
                     },
                     opts=pulumi.ResourceOptions(depends_on=[bucket_public_access_block])
-        )
+    )
+    # Note: intentionally omitted versioning to keep the code concise
 
-    # Export the website URL
-    pulumi.export("website_url", site_bucket.website_endpoint)
+# Create a static website on S3, customized by the passed parameter.
+def create_pulumi_program(name: str):
+    site_bucket = s3.BucketV2("s3-website-bucket")
+
+    website_config = upload_starter_content(site_bucket, name)
+
+    set_bucket_access(site_bucket)
+
+    pulumi.export("website_url", website_config.website_endpoint)
 
 @app.route("/sites", methods=["GET"])
 def list_handler():
@@ -167,25 +140,24 @@ def list_handler():
         return jsonify(ids=[stack.name for stack in stacks])
     except Exception as exn:
         return make_response(str(exn), 500)
-    
-@app.route("/sites", methods=["POST"])
+
+@app.route("/site", methods=["POST"])
 def create_handler():
-    """creates new sites"""
-    stack_name = request.json.get('id')
-    username = request.json.get('username')
+    name = request.json.get('username')
+
     try:
         def pulumi_program():
-            return create_pulumi_program(username)
+            return create_pulumi_program(name)
         # create a new stack, generating our pulumi program on the fly from the POST body
-        stack = auto.create_stack(stack_name=stack_name,
+        stack = auto.create_stack(stack_name=name,
                                   project_name=PROJECT_NAME,
                                   program=pulumi_program)
         stack.set_config("aws:region", auto.ConfigValue("us-west-2"))
         # deploy the stack, tailing the logs to stdout
         up_res = stack.up(on_output=print)
-        return jsonify(id=stack_name, url=up_res.outputs['website_url'].value)
+        return jsonify(id=name, url=up_res.outputs['website_url'].value)
     except auto.StackAlreadyExistsError:
-        return make_response(f"Stack '{stack_name}' already exists", 409)
+        return make_response(f"Stack '{name}' already exists", 409)
     except Exception as exn:
         return make_response(str(exn), 500)
 
@@ -199,7 +171,6 @@ def get_handler(id: str):
                                   # no-op program, just to get outputs
                                   program=lambda *args: None)
         outs = stack.outputs()
-        print("outs: ", outs)
         return jsonify(id=stack_name, url=outs["website_url"].value)
     except auto.StackNotFoundError:
         return make_response(f"stack '{stack_name}' does not exist", 404)
@@ -207,8 +178,7 @@ def get_handler(id: str):
         print(exn)
         return make_response(str(exn), 500)
 
-# Intentionally disabled since updating S3 assets with the AWS S3 SDK makes more sense
-# @app.route("/site/<string:id>", methods=["UPDATE"])
+# Omitted the update endpoint since updating S3 assets with the AWS S3 SDK makes more sense
 
 @app.route("/site/<string:id>", methods=["DELETE"])
 def delete_handler(id: str):
